@@ -19,7 +19,7 @@ void setup() {
   Serial.begin(115200);
   initEspNow(controllerAddress);
   setEventHandler(&handleEvent);
-  
+
   pinMode(ENA, OUTPUT);
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -29,7 +29,7 @@ void setup() {
 }
 
 void loop() {
-  if(millis() - lastRemoteUpdate > 1000)
+  if (millis() - lastRemoteUpdate > 1000)
     carStop();
 }
 
@@ -47,14 +47,14 @@ void handleEvent(int event, char* message) {
 void handleJoystickMovement(char* message) {
   sscanf(message, "%d;%d", &left, &right);
 
-  if(right < MIN_USABLE_SPEED && right > -MIN_USABLE_SPEED)
+  if (right < MIN_USABLE_SPEED && right > -MIN_USABLE_SPEED)
     right = 0;
-  if(left < MIN_USABLE_SPEED && left > -MIN_USABLE_SPEED)
+  if (left < MIN_USABLE_SPEED && left > -MIN_USABLE_SPEED)
     left = 0;
 
   lastRemoteUpdate = millis();
 
-  moveCar();  
+  moveCar();
 }
 
 void handleJoystickButton(char* message) {
@@ -99,4 +99,3 @@ void moveCar() {
   analogWrite(ENA, abs(left));
   analogWrite(ENB, abs(right));
 }
-
