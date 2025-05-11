@@ -6,6 +6,7 @@
 char incomingMessage[250];
 uint8_t * address;
 static EventHandler eventHandler = nullptr;
+static MessageStatusHandler messageStatusHandler = nullptr;
 
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
   static char buffer[250];
@@ -26,10 +27,18 @@ void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+
+  if (messageStatusHandler) {
+    messageStatusHandler(status != ESP_NOW_SEND_SUCCESS);
+  }
 }
 
 void setEventHandler(EventHandler handler) {
   eventHandler = handler;
+}
+
+void setMessageStatusHandler(MessageStatusHandler handler) {
+  messageStatusHandler = handler;
 }
 
 void initEspNow(uint8_t *peerAddress) {
