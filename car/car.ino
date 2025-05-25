@@ -4,7 +4,7 @@
 #include <DHT.h>
 #include <NewPing.h>
 
-#define MAX_DISTANCE 200  
+#define MAX_DISTANCE 200
 #define TRIG_PIN 32
 #define ECHO_PIN 33
 
@@ -15,10 +15,10 @@
 #define IN4 19
 #define ENB 25
 
-#define DHT_PIN 4       
+#define DHT_PIN 4
 #define DHT_TYPE DHT11
 #define BUZZER_PIN 26
-#define LED_DRL_PIN 2     
+#define LED_DRL_PIN 2
 #define LED_LEFT_TURN_PIN 13
 #define LED_RIGHT_TURN_PIN 5
 
@@ -27,7 +27,7 @@ NewPing sonar(TRIG_PIN, ECHO_PIN, MAX_DISTANCE);
 DHT dht(DHT_PIN, DHT_TYPE);
 
 // mac address of car: D0:EF:76:47:4D:28
-uint8_t controllerAddress[] = { 0x78, 0x42, 0x1C, 0x65, 0x3D, 0x54 };
+uint8_t controllerAddress[] = { 0x00, 0x4B, 0x12, 0x53, 0x2C, 0xE8 };
 
 int left = 0, right = 0;
 int lastRemoteUpdate = 0;
@@ -37,6 +37,9 @@ unsigned long lastBlinkTime = 0;
 bool blinkState = false;
 long duration;
 
+bool hornActive = false;
+
+float lastDistance = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -59,19 +62,23 @@ void setup() {
   digitalWrite(LED_LEFT_TURN_PIN, LOW);
   digitalWrite(LED_RIGHT_TURN_PIN, LOW);
 
-  dht.begin(); 
+  dht.begin();
 }
 
 void loop() {
-  if (millis() - lastRemoteUpdate > 1000)
+  loopEspNow();
+  if (millis() - lastRemoteUpdate > 1000) {
     carStop();
+    noTone(BUZZER_PIN);
+    hornActive = false;
+  }
 
   static unsigned long lastDhtRead = 0;
   if (millis() - lastDhtRead > 5000) {
     lastDhtRead = millis();
     readDHTData();
   }
- 
+
   static unsigned long lastDistanceCheck = 0;
   if (millis() - lastDistanceCheck > 200) {
     lastDistanceCheck = millis();
@@ -79,7 +86,6 @@ void loop() {
   }
 
   updateTurnSignals();
-
 }
 
 void handleEvent(int event, char* message) {
@@ -107,7 +113,15 @@ void handleJoystickMovement(char* message) {
 }
 
 void handleJoystickButton(char* message) {
-  Serial.printf("button: %s", message);
+  if (strcmp(message, "1") == 0) {
+    if (!hornActive)
+      tone(BUZZER_PIN, 1000);
+  } else {
+    if (hornActive)
+      noTone(BUZZER_PIN);
+  }
+
+  hornActive = strcmp(message, "1") == 0;
 }
 
 void carStop() {
@@ -120,12 +134,12 @@ void carStop() {
 }
 
 void moveCar() {
-  Serial.printf("Moving right %d, left %d\n", right, left);
-
   if (right == 0 && left == 0) {
     carStop();
     return;
   }
+
+  Serial.printf("Moving right %d, left %d\n", right, left);
 
   // Left motor direction
   if (left >= 0) {
@@ -158,32 +172,29 @@ void readDHTData() {
     return;
   }
 
-  Serial.print("Temp: ");
-  Serial.print(temperature);
-  Serial.print(" °C, Humidity: ");
-  Serial.print(humidity);
-  Serial.println(" %");
+  char buffer[250];
+  Serial.printf("%.2f;%.2f\n", temperature, humidity);
+  snprintf(buffer, sizeof(buffer), "%.2f;%.2f", temperature, humidity);
+
+  sendEvent(EVENT_DHT, buffer);
 }
 
 void testBuzzer() {
-  tone(BUZZER_PIN, 1000); 
+  tone(BUZZER_PIN, 1000);
   delay(500);
   noTone(BUZZER_PIN);
   delay(1000);
 }
 
-
 float readDistanceCM() {
   unsigned int distance = sonar.ping_cm();
-  if (distance == 0) return -1; 
+  if (distance == 0) return -1;
   return (float)distance;
 }
-
 
 void checkDistance() {
   float distance = readDistanceCM();
   if (distance <= 0) {
-    Serial.println("Brak odczytu");
     return;
   }
 
@@ -191,24 +202,34 @@ void checkDistance() {
   Serial.print(distance);
   Serial.println(" cm");
 
-  if (distance > 40) {
+  if (distance != lastDistance) {
+    String distStr = String((int)distance);
+    sendEvent(EVENT_DISTANCE, (char*)distStr.c_str());
+  }
+
+  lastDistance = distance;
+  if (distance > 40 && !hornActive) {
     noTone(BUZZER_PIN);
     return;
   }
 
-  int delayTime = map((int)distance, 2, 40, 100, 600);  
+  int delayTime = map((int)distance, 2, 40, 100, 600);
 
-  tone(BUZZER_PIN, 1000);
-  delay(100);  
-  noTone(BUZZER_PIN);
+  tone(BUZZER_PIN, hornActive ? 1200 : 1000);
+  delay(100);
+  if (hornActive) {
+    tone(BUZZER_PIN, 1000);
+  } else {
+    noTone(BUZZER_PIN);
+  }
   delay(delayTime);
 }
 
 void updateTurnSignals() {
-  if (left > right + 100) {
+  if (abs(left) > abs(right) + 100) {
     rightTurn = true;
     leftTurn = false;
-  } else if (right > left + 100) {
+  } else if (abs(right) > abs(left) + 100) {
     leftTurn = true;
     rightTurn = false;
   } else {
@@ -227,7 +248,3 @@ void updateTurnSignals() {
   if (!leftTurn) digitalWrite(LED_LEFT_TURN_PIN, LOW);
   if (!rightTurn) digitalWrite(LED_RIGHT_TURN_PIN, LOW);
 }
-
-
-
-
